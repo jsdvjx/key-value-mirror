@@ -9,10 +9,11 @@ object KeyValueEntry {
     const val COLUMN_NAME_GROUP = "group_name"
     const val COLUMN_NAME_KEY = "key_name"
     const val COLUMN_NAME_VALUE = "value"
+    const val COLUMN_NAME_TYPE = "type"
     const val COLUMN_NAME_UPDATED_AT = "updated_at"
 }
 
-class KeyValueDbHelper(context: Context) : SQLiteOpenHelper(context, "key_value", null, 1) {
+class KeyValueDbHelper(context: Context) : SQLiteOpenHelper(context, "key_value", null, 2) {
     companion object {
         const val SQL_CREATE_ENTRIES = """
             CREATE TABLE ${KeyValueEntry.TABLE_NAME} (
@@ -20,6 +21,7 @@ class KeyValueDbHelper(context: Context) : SQLiteOpenHelper(context, "key_value"
                 ${KeyValueEntry.COLUMN_NAME_KEY} TEXT NOT NULL,
                 ${KeyValueEntry.COLUMN_NAME_VALUE} TEXT NOT NULL,
                 ${KeyValueEntry.COLUMN_NAME_UPDATED_AT} INTEGER NOT NULL,
+                ${KeyValueEntry.COLUMN_NAME_TYPE} TEXT NOT NULL,
                 PRIMARY KEY (${KeyValueEntry.COLUMN_NAME_GROUP}, ${KeyValueEntry.COLUMN_NAME_KEY})
             )
         """

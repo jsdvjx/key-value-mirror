@@ -4,8 +4,15 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 
+//Int,Long,Float,Double,String,Boolean
 class Control(context: Context) {
-    data class KeyValueItem(val group: String, val key: String, val value: String, val updatedAt: Long)
+    data class KeyValueItem(
+        val group: String,
+        val key: String,
+        val value: String,
+        val type: String,
+        val updatedAt: Long
+    )
 
     private val keyValueDbHelper = KeyValueDbHelper(context)
     private val db = keyValueDbHelper.writableDatabase
@@ -13,14 +20,26 @@ class Control(context: Context) {
     private val properties: MutableMap<String, KeyValueItem> =
         all().associateBy { it.group + "_" + it.key }.toMutableMap()
 
-    fun get(group: String, key: String): String? {
-        return properties[group + "_" + key]?.value
+    fun get(group: String, key: String): Any {
+        if (properties.containsKey(group + "_" + key)) {
+            val item = properties[group + "_" + key]!!
+            return when (item.type) {
+                "Int" -> item.value.toInt()
+                "Long" -> item.value.toLong()
+                "Float" -> item.value.toFloat()
+                "Double" -> item.value.toDouble()
+                "String" -> item.value
+                "Boolean" -> item.value.toBoolean()
+                else -> ""
+            }
+        }
+        throw Throwable("No such key: $group.$key")
     }
 
-    fun set(group: String, key: String, value: String): Boolean {
+    fun set(group: String, key: String, value: String, type: String): Boolean {
         return upsert(group, key, value).apply {
             if (this) {
-                properties[group + "_" + key] = KeyValueItem(group, key, value, System.currentTimeMillis())
+                properties[group + "_" + key] = KeyValueItem(group, key, value, type, System.currentTimeMillis())
             }
         }
     }
@@ -37,6 +56,7 @@ class Control(context: Context) {
                     COLUMN_NAME_GROUP,
                     COLUMN_NAME_KEY,
                     COLUMN_NAME_VALUE,
+                    COLUMN_NAME_TYPE,
                     COLUMN_NAME_UPDATED_AT
                 )
             },
@@ -53,7 +73,8 @@ class Control(context: Context) {
                     cursor.getString(0),
                     cursor.getString(1),
                     cursor.getString(2),
-                    cursor.getLong(3)
+                    cursor.getString(3),
+                    cursor.getLong(4)
                 )
             )
         }
