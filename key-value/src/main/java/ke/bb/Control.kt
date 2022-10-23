@@ -21,6 +21,12 @@ class Control(context: Context) {
                 "Double" -> value?.toDouble() ?: "0.0"
                 "String" -> value
                 "Boolean" -> value.toBoolean()
+                "String?" -> value
+                "Boolean?" -> value?.toBoolean()
+                "Int?"-> value?.toInt()
+                "Long?"-> value?.toLong()
+                "Float?"-> value?.toFloat()
+                "Double?"-> value?.toDouble()
                 else -> null
             }
         }
