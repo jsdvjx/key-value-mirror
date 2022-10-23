@@ -9,59 +9,95 @@ class Control(context: Context) {
     data class KeyValueItem(
         val group: String,
         val key: String,
-        val value: String,
+        var value: String?,
         val type: String,
-        val updatedAt: Long
-    )
+        var updatedAt: Long
+    ) {
+        fun get(): Any? {
+            return when (type) {
+                "Int" -> value?.toInt() ?: 0
+                "Long" -> value?.toLong() ?: 0L
+                "Float" -> value?.toFloat() ?: 0F
+                "Double" -> value?.toDouble() ?: "0.0"
+                "String" -> value
+                "Boolean" -> value.toBoolean()
+                else -> null
+            }
+        }
+    }
+
+    class SyncMap(
+        private val map: MutableMap<String, Any?> = mutableMapOf(),
+        private val onUpdate: (KeyValueItem?, value: Any?) -> Unit,
+    ) : MutableMap<String, Any?> by map {
+        override fun put(key: String, value: Any?): Any? {
+            if (map.containsKey(key)) {
+                val item = map[key] as KeyValueItem
+                onUpdate(item, value)
+                return item.get()
+            }
+            throw Throwable("No such key: $key")
+        }
+
+        override fun putAll(from: Map<out String, Any?>) {
+            for (entry in from) {
+                put(entry.key, entry.value)
+            }
+        }
+
+        override fun remove(key: String): Any? {
+            val result = get(key)
+            put(key, null)
+            return result
+        }
+
+        override fun clear() {
+            for (mutableEntry in map) {
+                remove(mutableEntry.key)
+            }
+        }
+
+        override fun get(key: String): Any? {
+            return (map[key] as KeyValueItem).get()
+        }
+    }
 
     private val keyValueDbHelper = KeyValueDbHelper(context)
     private val db = keyValueDbHelper.writableDatabase
 
-    private val properties: MutableMap<String, KeyValueItem> =
-        all().associateBy { it.group + "_" + it.key }.toMutableMap()
-
-    fun get(group: String, key: String): Any {
-        if (properties.containsKey(group + "_" + key)) {
-            val item = properties[group + "_" + key]!!
-            return when (item.type) {
-                "Int" -> item.value.toInt()
-                "Long" -> item.value.toLong()
-                "Float" -> item.value.toFloat()
-                "Double" -> item.value.toDouble()
-                "String" -> item.value
-                "Boolean" -> item.value.toBoolean()
-                else -> ""
+    private val groups: MutableMap<String, SyncMap> =
+        all().groupBy { it.group }.mapValues {
+            SyncMap(it.value.associateBy { item -> item.key }.toMutableMap()) { item, value ->
+                set(item!!, value?.toString())
             }
-        }
-        throw Throwable("No such key: $group.$key")
+        }.toMutableMap()
+
+    fun getGroup(group: String): SyncMap {
+        return groups[group]!!
     }
 
-    fun set(group: String, key: String, value: String, type: String): Boolean {
-        return upsert(group, key, value).apply {
-            if (this) {
-                properties[group + "_" + key] = KeyValueItem(group, key, value, type, System.currentTimeMillis())
-            }
-        }
+    private fun set(item: KeyValueItem, value: String?): Boolean {
+        return upsert(item, value)
     }
 
-    fun setIfNotExists(group: String, key: String, value: String, type: String): Boolean {
-        if (exists(group, key)) {
+    private fun setIfNotExists(item: KeyValueItem, value: String?): Boolean {
+        if (exists(item)) {
             return false
         }
-        return upsert(group, key, value).apply {
-            if (this) {
-                properties[group + "_" + key] = KeyValueItem(group, key, value, type, System.currentTimeMillis())
-            }
-        }
+        return upsert(item, value)
     }
 
-    private fun exists(group: String, key: String): Boolean {
+    fun initKeyValue(group: String, key: String, type: String, value: String? = null): Boolean {
+        return setIfNotExists(KeyValueItem(group, key, value, type, System.currentTimeMillis()), value)
+    }
+
+    private fun exists(item: KeyValueItem): Boolean {
 //        return properties.containsKey(group + "_" + key)
         val cursor = db.query(
             KeyValueEntry.TABLE_NAME,
             arrayOf(KeyValueEntry.COLUMN_NAME_GROUP, KeyValueEntry.COLUMN_NAME_KEY),
             "${KeyValueEntry.COLUMN_NAME_GROUP} = ? AND ${KeyValueEntry.COLUMN_NAME_KEY} = ?",
-            arrayOf(group, key),
+            arrayOf(item.group, item.key),
             null,
             null,
             null
@@ -71,9 +107,6 @@ class Control(context: Context) {
         }
     }
 
-    fun getRaw(): MutableMap<String, KeyValueItem> {
-        return properties
-    }
 
     private fun all(): List<KeyValueItem> {
         val cursor = db.query(
@@ -109,18 +142,16 @@ class Control(context: Context) {
         return records
     }
 
-    private fun delete(group: String, key: String): Boolean {
-        val selection = "${KeyValueEntry.COLUMN_NAME_GROUP} = ? AND ${KeyValueEntry.COLUMN_NAME_KEY} = ?"
-        val selectionArgs = arrayOf(group, key)
-        return db.delete(KeyValueEntry.TABLE_NAME, selection, selectionArgs) > 0
-    }
 
-    private fun upsert(group: String, key: String, value: String): Boolean {
+    private fun upsert(item: KeyValueItem, value: String?): Boolean {
+        item.updatedAt = System.currentTimeMillis()
+        item.value = value
         val values = ContentValues().apply {
-            put(KeyValueEntry.COLUMN_NAME_GROUP, group)
-            put(KeyValueEntry.COLUMN_NAME_KEY, key)
-            put(KeyValueEntry.COLUMN_NAME_VALUE, value)
-            put(KeyValueEntry.COLUMN_NAME_UPDATED_AT, System.currentTimeMillis())
+            put(KeyValueEntry.COLUMN_NAME_GROUP, item.group)
+            put(KeyValueEntry.COLUMN_NAME_KEY, item.key)
+            put(KeyValueEntry.COLUMN_NAME_VALUE, item.value)
+            put(KeyValueEntry.COLUMN_NAME_TYPE, item.type)
+            put(KeyValueEntry.COLUMN_NAME_UPDATED_AT, item.updatedAt)
         }
         return db.insertWithOnConflict(
             KeyValueEntry.TABLE_NAME,
