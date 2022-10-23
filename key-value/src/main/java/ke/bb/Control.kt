@@ -44,6 +44,33 @@ class Control(context: Context) {
         }
     }
 
+    fun setIfNotExists(group: String, key: String, value: String, type: String): Boolean {
+        if (exists(group, key)) {
+            return false
+        }
+        return upsert(group, key, value).apply {
+            if (this) {
+                properties[group + "_" + key] = KeyValueItem(group, key, value, type, System.currentTimeMillis())
+            }
+        }
+    }
+
+    private fun exists(group: String, key: String): Boolean {
+//        return properties.containsKey(group + "_" + key)
+        val cursor = db.query(
+            KeyValueEntry.TABLE_NAME,
+            arrayOf(KeyValueEntry.COLUMN_NAME_GROUP, KeyValueEntry.COLUMN_NAME_KEY),
+            "${KeyValueEntry.COLUMN_NAME_GROUP} = ? AND ${KeyValueEntry.COLUMN_NAME_KEY} = ?",
+            arrayOf(group, key),
+            null,
+            null,
+            null
+        )
+        return (cursor.count > 0).apply {
+            cursor.close()
+        }
+    }
+
     fun getRaw(): MutableMap<String, KeyValueItem> {
         return properties
     }
